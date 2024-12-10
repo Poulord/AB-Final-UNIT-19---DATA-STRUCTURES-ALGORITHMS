@@ -1,7 +1,8 @@
 import folium
-from itertools import islice
-from geopy.distance import geodesic28823
+from geopy.distance import geodesic
 import networkx as nx
+import json
+import os
 
 # Coordenadas aproximadas para los códigos postales
 postal_coordinates = {
@@ -33,8 +34,23 @@ locales_por_postal = {
     "28830": ["Local K1", "Local K2"]
 }
 
+# Ruta del archivo JSON
+archivo_pedidos = 'pedidos.json'
+
+# Cargar pedidos desde el archivo JSON
+def cargar_pedidos():
+    if os.path.exists(archivo_pedidos):
+        with open(archivo_pedidos, 'r') as f:
+            return json.load(f)
+    return []
+
+# Guardar pedidos en el archivo JSON
+def guardar_pedidos(pedidos):
+    with open(archivo_pedidos, 'w') as f:
+        json.dump(pedidos, f)
+
 # Pedidos almacenados
-pedidos = []
+pedidos = cargar_pedidos()
 
 # Solicitar información de pedidos
 def tomar_pedido():
@@ -55,14 +71,17 @@ def tomar_pedido():
         print("El local seleccionado no es válido para este código postal.")
         return
 
-    pedidos.append({
+    nuevo_pedido = {
         "codigo_postal": codigo_postal,
         "nombre": nombre,
         "apellido": apellido,
         "receptor": receptor,
         "local": local,
         "coordenadas": postal_coordinates[codigo_postal]
-    })
+    }
+
+    pedidos.append(nuevo_pedido)
+    guardar_pedidos(pedidos)  # Guardar pedidos en el archivo JSON
 
     print(f"Pedido registrado para {receptor} en {local}, código postal {codigo_postal}.")
 
@@ -75,7 +94,7 @@ def planificar_entregas(pedidos, capacidad_camion=3):
     return rutas
 
 # Calcular la ruta óptima para un conjunto de entregas
-def calcular_ruta(pedidos_ruta):
+def calcular_ruta (pedidos_ruta):
     graph = nx.Graph()
     nodos = [(pedido["local"], pedido["coordenadas"]) for pedido in pedidos_ruta]
 
@@ -123,6 +142,13 @@ def visualizar_ruta(ruta, nombre="ruta"):
     mapa.save(f"{nombre}.html")
     print(f"Ruta guardada como {nombre}.html")
 
+# Eliminar pedidos entregados
+def eliminar_pedidos_entregados(rutas):
+    global pedidos
+    entregados = [pedido for ruta, _ in rutas for pedido in ruta[0]]  # Cambiado para acceder correctamente a los locales
+    pedidos = [pedido for pedido in pedidos if pedido["local"] not in entregados]
+    guardar_pedidos(pedidos)  # Guardar la lista actualizada de pedidos
+
 # Prueba con datos simulados
 for _ in range(12):  # 12 pedidos simulados
     tomar_pedido()
@@ -133,3 +159,5 @@ if rutas:
     for idx, (ruta, distancia) in enumerate(rutas, 1):
         print(f"Ruta {idx}: {ruta} | Distancia total: {distancia:.2f} km")
         visualizar_ruta((ruta, distancia), f"ruta_{idx}")
+
+    eliminar_pedidos_entregados(rutas)  # Eliminar pedidos ya entregados
