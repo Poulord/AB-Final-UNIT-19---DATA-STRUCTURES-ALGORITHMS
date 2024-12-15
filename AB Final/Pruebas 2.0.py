@@ -1,10 +1,23 @@
 import folium
-from geopy.distance import geodesic
 import networkx as nx
+from geopy.distance import geodesic
+from colorama import Fore, init
+import random
 import json
 import os
-import random
-from colorama import Fore, Style, init
+
+# Inicializar colorama
+init(autoreset=True)
+
+# Zonas y sus códigos postales
+zonas = {
+    "Coslada": ["28821", "28822", "28823"],
+    "Torrejón de Ardoz": ["28850", "28851"],
+    "Alcalá de Henares": ["28801", "28802", "28803", "28804", "28805", "28806", "28807"],
+    "Mejorada del Campo": ["28840"],
+    "Vicálvaro": ["28032"],
+    "San Fernando de Henares": ["28830"]
+}
 
 # Coordenadas base por código postal
 postal_coordinates = {
@@ -31,21 +44,6 @@ postal_coordinates = {
     "28830": (40.4242, -3.5321)
 }
 
-
-
-# Simular locales con pequeñas variaciones de las coordenadas base
-def generar_locales(postal_coordinates, locales_por_postal):
-    locales = {}
-    for postal, coords in postal_coordinates.items():
-        for idx in range(len(locales_por_postal[postal])):
-            # Simular locales cercanos con desplazamientos aleatorios menores
-            delta_lat = random.uniform(-0.005, 0.005)
-            delta_lon = random.uniform(-0.005, 0.005)
-            local_coords = (coords[0] + delta_lat, coords[1] + delta_lon)
-            local_name = f"{postal}_Local{idx+1}"
-            locales[local_name] = {"coords": local_coords, "postal": postal}
-    return locales
-
 # Locales por código postal
 locales_por_postal = {
     "28821": ["Local A1", "Local A2"],
@@ -65,30 +63,62 @@ locales_por_postal = {
     "28830": ["Local O1", "Local O2"]
 }
 
-locales = generar_locales(postal_coordinates, locales_por_postal)
+# Generar locales con variaciones
+def generar_locales(postal_coordinates, locales_por_postal):
+    locales = {}
+    for postal, coords in postal_coordinates.items():
+        for idx, local_name in enumerate(locales_por_postal[postal]):
+            delta_lat = random.uniform(-0.005, 0.005)
+            delta_lon = random.uniform(-0.005, 0.005)
+            local_coords = (coords[0] + delta_lat, coords[1] + delta_lon)
+            locales[local_name] = {"coords": local_coords, "zona": postal}
+    return locales
 
-# Construir un grafo con distancias y tiempos
+# Construir grafo de locales
 def construir_grafo(locales):
     grafo = nx.Graph()
-    nodos = list(locales.keys())
-
-    for i, nodo1 in enumerate(nodos):
-        for j, nodo2 in enumerate(nodos):
-            if i >= j:
-                continue  # No repetir conexiones
-            coords1 = locales[nodo1]["coords"]
-            coords2 = locales[nodo2]["coords"]
+    for local1, data1 in locales.items():
+        for local2, data2 in locales.items():
+            if local1 == local2:
+                continue
+            coords1, coords2 = data1["coords"], data2["coords"]
             distancia = geodesic(coords1, coords2).kilometers
-            tiempo = distancia / 40 * 60  # Tiempo en minutos, velocidad promedio 40 km/h
-            grafo.add_edge(nodo1, nodo2, weight=distancia, tiempo=tiempo)
+            tiempo = distancia / 40 * 60  # Tiempo en minutos
+            grafo.add_edge(local1, local2, weight=distancia, tiempo=tiempo)
     return grafo
 
-grafo_locales = construir_grafo(locales)
+# Mostrar mapa del grafo con opción de filtro
+def mostrar_mapa(locales, grafo, zona=None):
+    if zona:
+        codigos_postales = zonas.get(zona, [])
+        locales_filtrados = {k: v for k, v in locales.items() if v["zona"] in codigos_postales}
+    else:
+        locales_filtrados = locales
 
-# Mostrar una muestra del grafo
-grafo_locales.edges(data=True)
+    mapa = folium.Map(location=(40.4168, -3.7038), zoom_start=11)  # Madrid central
+    colores = ["red", "blue", "green", "purple", "orange", "darkred"]
 
-# Ruta del archivo JSON
+    # Añadir nodos al mapa
+    for idx, (local, data) in enumerate(locales_filtrados.items()):
+        coords = data["coords"]
+        postal = data["zona"]
+        color = colores[idx % len(colores)]
+        folium.Marker(location=coords,
+                      popup=f"{local} ({postal})",
+                      icon=folium.Icon(color=color)).add_to(mapa)
+
+    # Añadir conexiones
+    for nodo1, nodo2, data in grafo.edges(data=True):
+        if nodo1 in locales_filtrados and nodo2 in locales_filtrados:
+            coords1 = locales_filtrados[nodo1]["coords"]
+            coords2 = locales_filtrados[nodo2]["coords"]
+            folium.PolyLine([coords1, coords2], color="gray", weight=1).add_to(mapa)
+
+    # Guardar y mostrar
+    mapa.save("mapa_locales.html")
+    print(f"{Fore.GREEN}Mapa generado: 'mapa_locales.html' (Ábrelo en tu navegador).")
+    
+    # Ruta del archivo JSON
 archivo_pedidos = 'pedidos.json'
 
 # Cargar pedidos desde el archivo JSON
@@ -105,10 +135,6 @@ def guardar_pedidos(pedidos):
 
 # Pedidos almacenados
 pedidos = cargar_pedidos()
-
-
-# Inicializar colorama
-init(autoreset=True)
 
 # Separador decorativo
 def imprimir_encabezado(texto):
@@ -215,29 +241,55 @@ def tomar_pedido():
     guardar_pedidos(pedidos)
     print(f"{Fore.GREEN}Los pedidos han sido guardados correctamente.")
     imprimir_separador()
-    
-    # Menú principal
-def menu_principal():
+
+# Submenú para elegir opción de mapa
+def sub_menu_mapa(locales, grafo):
     while True:
-        print(f"\n{Fore.CYAN}=== MENÚ PRINCIPAL ===")
-        print("1. Hacer un pedido")
-        print("2. Mostrar mapa de locales")
-        print("3. Salir")
+        print(f"\n{Fore.CYAN}=== OPCIONES DE MAPA ===")
+        print("1. Ver radio completo")
+        print("2. Filtrar por zona")
+        print("3. Volver al menú principal")
         opcion = input("Seleccione una opción: ").strip()
+
         if opcion == "1":
-            tomar_pedido()
+            mostrar_mapa(locales, grafo)
+            break
         elif opcion == "2":
-            mostrar_mapa()
+            print("Zonas disponibles:")
+            for zona, codigos in zonas.items():
+                print(f"- {zona} (Códigos postales: {', '.join(codigos)})")
+            zona_seleccionada = input("Ingrese la zona deseada: ").strip()
+            if zona_seleccionada in zonas:
+                mostrar_mapa(locales, grafo, zona=zona_seleccionada)
+                break
+            else:
+                print(f"{Fore.RED}Zona no válida.")
         elif opcion == "3":
-            print(f"{Fore.GREEN}Gracias por usar el sistema.")
             break
         else:
             print(f"{Fore.RED}Opción inválida.")
 
-# Ejecutar menú principal
-menu_principal()
+# Generar nodos y grafo
+locales = generar_locales(postal_coordinates, locales_por_postal)
+grafo_locales = construir_grafo(locales)
+
+
+
+
+    # Función para calcular rutas
+def calcular_rutas():
+    if not pedidos:
+        print(f"{Fore.RED}No hay pedidos para calcular rutas.")
+        return
+
+    rutas = planificar_entregas(pedidos)
+    if rutas:
+        print(f"{Fore.GREEN}Rutas calculadas:")
+        for idx, (ruta, distancia) in enumerate(rutas, 1):
+            print(f"Ruta {idx}: {ruta} | Distancia total: {distancia:.2f} km")
+            visualizar_ruta((ruta, distancia), f"ruta_{idx}")
     
-# Planificación y cálculo de rutas
+    # Planificación y cálculo de rutas
 def planificar_entregas(pedidos, capacidad_camion=3):
     rutas = []
     for i in range(0, len(pedidos), capacidad_camion):
@@ -301,15 +353,37 @@ def eliminar_pedidos_entregados(rutas):
     pedidos = [pedido for pedido in pedidos if pedido["local"] not in entregados]
     guardar_pedidos(pedidos)  # Guardar la lista actualizada de pedidos
 
-# Prueba con datos simulados
-for _ in range(12):  # 12 pedidos simulados
-    tomar_pedido()
 
-rutas = planificar_entregas(pedidos)
-if rutas:
-    print("Rutas calculadas:")
-    for idx, (ruta, distancia) in enumerate(rutas, 1):
-        print(f"Ruta {idx}: {ruta} | Distancia total: {distancia:.2f} km")
-        visualizar_ruta((ruta, distancia), f"ruta_{idx}")
 
-    eliminar_pedidos_entregados(rutas)  # Eliminar pedidos ya entregados 
+# Menú principal
+def menu_principal():
+    while True:
+        print(f"\n{Fore.CYAN}=== MENÚ PRINCIPAL ===")
+        print("1. Hacer un pedido")
+        print("2. Mostrar mapa de locales")
+        print("3. Calcular rutas")
+        print("4. Salir")
+        opcion = input("Seleccione una opción: ").strip()
+
+        if opcion == "1":
+            tomar_pedido()
+        elif opcion == "2":
+            sub_menu_mapa(locales, grafo_locales)
+        elif opcion == "3":
+            calcular_rutas()
+        elif opcion == "4":
+            print(f"{Fore.GREEN}Gracias por usar el sistema.")
+            break
+        else:
+            print(f"{Fore.RED}Opción inválida.")
+
+# Ejecutar menú principal
+menu_principal()
+
+
+
+    
+    
+
+
+

@@ -1,0 +1,1 @@
+Para que funcione el codigo correctamente, estos scripts, deben estar en la misma carpeta donde esta el Json, si no, el codigo compilara pero no funcionara
