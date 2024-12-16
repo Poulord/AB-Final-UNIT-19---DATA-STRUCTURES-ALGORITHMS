@@ -269,27 +269,68 @@ def sub_menu_mapa(locales, grafo):
         else:
             print(f"{Fore.RED}Opción inválida.")
 
+
+
+
 # Generar nodos y grafo
 locales = generar_locales(postal_coordinates, locales_por_postal)
 grafo_locales = construir_grafo(locales)
 
+# Ruta del archivo JSON para rutas programadas
+archivo_rutas_programadas = 'rutas_programadas.json'
 
+# Cargar rutas programadas desde el archivo JSON
+def cargar_rutas_programadas():
+    if os.path.exists(archivo_rutas_programadas):
+        with open(archivo_rutas_programadas, 'r') as f:
+            return json.load(f)
+    return []
 
+# Guardar rutas programadas en el archivo JSON
+def guardar_rutas_programadas(rutas_programadas):
+    with open(archivo_rutas_programadas, 'w') as f:
+        json.dump(rutas_programadas, f, indent=4)
 
-    # Función para calcular rutas
+# Modificar la función de cálculo de rutas para incluir detalles
 def calcular_rutas():
     if not pedidos:
         print(f"{Fore.RED}No hay pedidos para calcular rutas.")
         return
 
+    rutas_programadas = cargar_rutas_programadas()
     rutas = planificar_entregas(pedidos)
+
     if rutas:
         print(f"{Fore.GREEN}Rutas calculadas:")
         for idx, (ruta, distancia) in enumerate(rutas, 1):
-            print(f"Ruta {idx}: {ruta} | Distancia total: {distancia:.2f} km")
+            # Datos de paquetes, peso y volumen
+            peso_total = sum(pedido["peso_total"] for pedido in ruta)  # Aquí ruta es una lista de pedidos
+            volumen_total = sum(pedido["volumen_total"] for pedido in ruta)
+            num_paquetes = sum(len(pedido["paquetes"]) for pedido in ruta)
+
+            print(f"\nRuta {idx}: {ruta} | Distancia total: {distancia:.2f} km")
+            print(f"  Número de paquetes: {num_paquetes}")
+            print(f"  Peso total: {peso_total:.2f} kg")
+            print(f"  Volumen total: {volumen_total:.2f} m³")
+
+            # Guardar datos en rutas programadas
+            rutas_programadas.append({
+                "ruta_id": idx,
+                "locales": [pedido["local"] for pedido in ruta],
+                "distancia_total_km": distancia,
+                "num_paquetes": num_paquetes,
+                "peso_total_kg": peso_total,
+                "volumen_total_m3": volumen_total
+            })
+
+            # Visualizar ruta
             visualizar_ruta((ruta, distancia), f"ruta_{idx}")
-    
-    # Planificación y cálculo de rutas
+
+        # Guardar rutas programadas en archivo JSON
+        guardar_rutas_programadas(rutas_programadas)
+        print(f"\n{Fore.GREEN}Las rutas programadas se han guardado en '{archivo_rutas_programadas}'.")
+
+# Modificar la planificación de entregas para incluir la división en camiones
 def planificar_entregas(pedidos, capacidad_camion=3):
     rutas = []
     for i in range(0, len(pedidos), capacidad_camion):
@@ -297,10 +338,50 @@ def planificar_entregas(pedidos, capacidad_camion=3):
         rutas.append(calcular_ruta(ruta_actual))
     return rutas
 
-# Calcular la ruta óptima para un conjunto de entregas
-def calcular_ruta (pedidos_ruta):
+# Modificar calcular_ruta para obtener detalles adicionales
+def calcular_ruta(pedidos_ruta):
     graph = nx.Graph()
     nodos = [(pedido["local"], pedido["coordenadas"]) for pedido in pedidos_ruta]
+
+    # Crear un grafo con distancias entre nodos
+    for i, (local1, coord1) in enumerate(nodos):
+        for j, (local2, coord2) in enumerate(nodos):
+            if i != j:
+                dist = geodesic(coord1, coord2).kilometers
+                graph.add_edge(local1, local2, weight=dist)
+
+    # Encontrar la ruta óptima usando el TSP (Nearest Neighbor)
+    nodes = list(graph.nodes)
+    ruta_optima = tsp_nearest_neighbor(graph, nodes[0])
+
+    # Calcular distancia total
+    distancia_total = sum(graph[u][v]['weight'] for u, v in zip(ruta_optima[:-1], ruta_optima[1:]))
+    return pedidos_ruta, distancia_total
+
+    
+def planificar_entregas(pedidos, capacidad_camion=3):
+    rutas = []
+    for i in range(0, len(pedidos), capacidad_camion):
+        ruta_actual = pedidos[i:i + capacidad_camion]
+        rutas.append(calcular_ruta(ruta_actual))
+    return rutas
+    
+    # Planificación y cálculo de rutass 
+def calcular_ruta(pedidos_ruta):
+    graph = nx.Graph()
+    nodos = [(pedido["local"], pedido["coordenadas"]) for pedido in pedidos_ruta]
+
+    # Crear un grafo con distancias entre nodos
+    for i, (local1, coord1) in enumerate(nodos):
+        for j, (local2, coord2) in enumerate(nodos):
+            if i != j:
+                dist = geodesic(coord1, coord2).kilometers
+                graph.add_edge(local1, local2, weight=dist)
+
+    # Encontrar la ruta óptima usando el TSP (Nearest Neighbor)
+    nodes = list(graph.nodes)
+    ruta_optima = tsp_nearest_neighbor(graph, nodes[0])
+    
 
     # Crear un grafo con distancias entre nodos
     for i, (local1, coord1) in enumerate(nodos):
