@@ -204,11 +204,11 @@ def tomar_pedido():
             print(f"{Fore.RED}Datos inválidos. Intente de nuevo.")
             continue
 
-        if peso_total + peso > 700:
+        if peso_total + peso > 2000:
             print(f"{Fore.RED}Excedería el límite de peso del camión (700 kg). Paquete no agregado.")
             continue
 
-        if volumen_total + volumen > 9:
+        if volumen_total + volumen > 15:
             print(f"{Fore.RED}Excedería el límite de volumen del camión (9 m³). Paquete no agregado.")
             continue
 

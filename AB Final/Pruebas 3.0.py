@@ -44,6 +44,9 @@ postal_coordinates = {
     "28830": (40.4242, -3.5321)
 }
 
+sucursal_vicalvaro = (40.4078, -3.6026)
+
+
 # Locales por código postal
 locales_por_postal = {
     "28821": ["Local A1", "Local A2"],
@@ -95,7 +98,7 @@ def mostrar_mapa(locales, grafo, zona=None):
     else:
         locales_filtrados = locales
 
-    mapa = folium.Map(location=(40.4168, -3.7038), zoom_start=11)  # Madrid central
+    mapa = folium.Map(location=sucursal_vicalvaro, zoom_start=11) # Sucursal en Vicalvaro
     colores = ["red", "blue", "green", "purple", "orange", "darkred"]
 
     # Añadir nodos al mapa
@@ -106,6 +109,7 @@ def mostrar_mapa(locales, grafo, zona=None):
         folium.Marker(location=coords,
                       popup=f"{local} ({postal})",
                       icon=folium.Icon(color=color)).add_to(mapa)
+        folium.Marker(location=sucursal_vicalvaro, popup="Sucursal", icon=folium.Icon(color="black", icon="home")).add_to(mapa)
 
     # Añadir conexiones
     for nodo1, nodo2, data in grafo.edges(data=True):
@@ -273,9 +277,6 @@ def sub_menu_mapa(locales, grafo):
 locales = generar_locales(postal_coordinates, locales_por_postal)
 grafo_locales = construir_grafo(locales)
 
-
-
-
     # Función para calcular rutas
 def calcular_rutas():
     if not pedidos:
@@ -298,24 +299,32 @@ def planificar_entregas(pedidos, capacidad_camion=3):
     return rutas
 
 # Calcular la ruta óptima para un conjunto de entregas
-def calcular_ruta (pedidos_ruta):
+def calcular_ruta(pedidos_ruta):
     graph = nx.Graph()
-    nodos = [(pedido["local"], pedido["coordenadas"]) for pedido in pedidos_ruta]
 
-    # Crear un grafo con distancias entre nodos
+    # Crear lista de nodos, incluyendo la sucursal
+    nodos = [(pedido["local"], pedido["coordenadas"]) for pedido in pedidos_ruta]
+    nodos.append(("Sucursal", sucursal_vicalvaro))  # Añadimos la sucursal
+
+    # Crear el grafo con distancias entre todos los nodos
     for i, (local1, coord1) in enumerate(nodos):
         for j, (local2, coord2) in enumerate(nodos):
             if i != j:
                 dist = geodesic(coord1, coord2).kilometers
                 graph.add_edge(local1, local2, weight=dist)
 
-    # Encontrar la ruta óptima usando el TSP (Nearest Neighbor)
-    nodes = list(graph.nodes)
-    ruta_optima = tsp_nearest_neighbor(graph, nodes[0])
+    # Calcular ruta óptima (TSP) empezando desde la sucursal
+    ruta_optima = tsp_nearest_neighbor(graph, "Sucursal")
+
+    # Asegurar que la ruta termina en la sucursal
+    if ruta_optima[-1] != "Sucursal":
+        ruta_optima.append("Sucursal")
 
     # Calcular distancia total
     distancia_total = sum(graph[u][v]['weight'] for u, v in zip(ruta_optima[:-1], ruta_optima[1:]))
+
     return ruta_optima, distancia_total
+
 
 # Heurística TSP Nearest Neighbor
 def tsp_nearest_neighbor(graph, start_node):
@@ -333,18 +342,27 @@ def tsp_nearest_neighbor(graph, start_node):
 
 # Visualizar ruta en mapa
 def visualizar_ruta(ruta, nombre="ruta"):
-    mapa = folium.Map(location=list(postal_coordinates.values())[0], zoom_start=12)
+    # Crear el mapa centrado en la sucursal
+    mapa = folium.Map(location=sucursal_vicalvaro, zoom_start=12)
 
+    # Crear una lista de coordenadas para la ruta
+    coords_ruta = []
     for local in ruta[0]:
-        coord = next(pedido["coordenadas"] for pedido in pedidos if pedido["local"] == local)
-        folium.Marker(location=coord, popup=local).add_to(mapa)
+        if local == "Sucursal":
+            coord = sucursal_vicalvaro
+            folium.Marker(location=coord, popup="Sucursal", icon=folium.Icon(color="black", icon="home")).add_to(mapa)
+        else:
+            coord = next(pedido["coordenadas"] for pedido in pedidos if pedido["local"] == local)
+            folium.Marker(location=coord, popup=local).add_to(mapa)
+        coords_ruta.append(coord)
 
-    # Crear polilínea para la ruta
-    coords_ruta = [next(pedido["coordenadas"] for pedido in pedidos if pedido["local"] == local) for local in ruta[0]]
+    # Dibujar la ruta en el mapa como una línea
     folium.PolyLine(coords_ruta, color="blue", weight=2.5, opacity=1).add_to(mapa)
 
+    # Guardar el mapa como un archivo HTML
     mapa.save(f"{nombre}.html")
     print(f"Ruta guardada como {nombre}.html")
+
 
 # Eliminar pedidos entregados
 def eliminar_pedidos_entregados(rutas):
@@ -352,8 +370,6 @@ def eliminar_pedidos_entregados(rutas):
     entregados = [pedido for ruta, _ in rutas for pedido in ruta[0]]  # Cambiado para acceder correctamente a los locales
     pedidos = [pedido for pedido in pedidos if pedido["local"] not in entregados]
     guardar_pedidos(pedidos)  # Guardar la lista actualizada de pedidos
-
-
 
 
 # Menú principal
