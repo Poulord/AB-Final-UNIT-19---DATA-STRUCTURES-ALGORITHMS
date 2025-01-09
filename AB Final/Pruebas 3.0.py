@@ -208,12 +208,12 @@ def tomar_pedido():
             print(f"{Fore.RED}Datos inválidos. Intente de nuevo.")
             continue
 
-        if peso_total + peso > 700:
-            print(f"{Fore.RED}Excedería el límite de peso del camión (700 kg). Paquete no agregado.")
+        if peso_total + peso > 2000:
+            print(f"{Fore.RED}Excedería el límite de peso del camión (2000 kg). Paquete no agregado.")
             continue
 
-        if volumen_total + volumen > 9:
-            print(f"{Fore.RED}Excedería el límite de volumen del camión (9 m³). Paquete no agregado.")
+        if volumen_total + volumen > 12:
+            print(f"{Fore.RED}Excedería el límite de volumen del camión (12 m³). Paquete no agregado.")
             continue
 
         paquetes.append({"nombre": nombre_paquete, "peso": peso, "volumen": volumen})
@@ -291,7 +291,7 @@ def calcular_rutas():
             visualizar_ruta((ruta, distancia), f"ruta_{idx}")
     
     # Planificación y cálculo de rutas
-def planificar_entregas(pedidos, capacidad_camion=3):
+def planificar_entregas(pedidos, capacidad_camion=10):
     rutas = []
     for i in range(0, len(pedidos), capacidad_camion):
         ruta_actual = pedidos[i:i + capacidad_camion]
