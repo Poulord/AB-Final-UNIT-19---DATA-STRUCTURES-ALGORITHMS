@@ -362,13 +362,15 @@ def visualizar_ruta(ruta, nombre="ruta"):
 
     # Crear una lista de coordenadas para la ruta
     coords_ruta = []
-    for local in ruta[0]:
+    for idx, local in enumerate(ruta[0], start=1):
         if local == "Sucursal":
             coord = sucursal_vicalvaro
+            popup_text = f"{idx}. Sucursal"
             folium.Marker(location=coord, popup="Sucursal", icon=folium.Icon(color="black", icon="home")).add_to(mapa)
         else:
             coord = next(pedido["coordenadas"] for pedido in pedidos if pedido["local"] == local)
-            folium.Marker(location=coord, popup=local).add_to(mapa)
+            popup_text = f"{idx}. {local}"
+            folium.Marker(location=coord, popup=popup_text).add_to(mapa)
         coords_ruta.append(coord)
 
     # Dibujar la ruta en el mapa como una línea
