@@ -70,7 +70,7 @@ locales_por_postal = {
 def generar_locales(postal_coordinates, locales_por_postal):
     locales = {}
     for postal, coords in postal_coordinates.items():
-        for idx, local_name in enumerate(locales_por_postal[postal]):
+        for local_name in locales_por_postal[postal]:
             delta_lat = random.uniform(-0.005, 0.005)
             delta_lon = random.uniform(-0.005, 0.005)
             local_coords = (coords[0] + delta_lat, coords[1] + delta_lon)
@@ -98,7 +98,7 @@ def mostrar_mapa(locales, grafo, zona=None):
     else:
         locales_filtrados = locales
 
-    mapa = folium.Map(location=sucursal_vicalvaro, zoom_start=11) # Sucursal en Vicalvaro
+    mapa = folium.Map(location=sucursal_vicalvaro, zoom_start=11)  # Sucursal en Vicalvaro
     colores = ["red", "blue", "green", "purple", "orange", "darkred"]
 
     # Añadir nodos al mapa
@@ -109,7 +109,9 @@ def mostrar_mapa(locales, grafo, zona=None):
         folium.Marker(location=coords,
                       popup=f"{local} ({postal})",
                       icon=folium.Icon(color=color)).add_to(mapa)
-        folium.Marker(location=sucursal_vicalvaro, popup="Sucursal", icon=folium.Icon(color="black", icon="home")).add_to(mapa)
+
+    # Añadir la sucursal al mapa
+    folium.Marker(location=sucursal_vicalvaro, popup="Sucursal", icon=folium.Icon(color="black", icon="home")).add_to(mapa)
 
     # Añadir conexiones
     for nodo1, nodo2, data in grafo.edges(data=True):
@@ -135,7 +137,7 @@ def cargar_pedidos():
 # Guardar pedidos en el archivo JSON
 def guardar_pedidos(pedidos):
     with open(archivo_pedidos, 'w') as f:
-        json.dump(pedidos, f)
+        json.dump(pedidos, f, indent=4)
 
 # Pedidos almacenados
 pedidos = cargar_pedidos()
@@ -357,58 +359,31 @@ def tsp_nearest_neighbor(graph, start_node):
 
 # Visualizar ruta en mapa
 def visualizar_ruta(ruta, nombre="ruta"):
-    """
-    Visualiza una ruta en un mapa interactivo.
-    - La ruta comienza y termina en la sucursal.
-    - Cada punto de la ruta tiene un marcador con popup.
-    """
     # Crear el mapa centrado en la sucursal
     mapa = folium.Map(location=sucursal_vicalvaro, zoom_start=12)
 
-    # Crear lista de coordenadas para la ruta (inicia en la sucursal)
-    coords_ruta = [sucursal_vicalvaro]
-    folium.Marker(
-        location=sucursal_vicalvaro,
-        popup="Inicio: Sucursal",
-        icon=folium.Icon(color="black", icon="home")
-    ).add_to(mapa)
+    # Crear una lista de coordenadas para la ruta
+    coords_ruta = []
+    coords_ruta.append(sucursal_vicalvaro)  # Agregar la sucursal al inicio
 
-    # Agregar los locales de la ruta
-    for idx, local in enumerate(ruta[1:], start=1):  # ruta[1:] para ignorar la sucursal inicial
-        # Filtrar todos los pedidos que coincidan con el nombre del local
-        locales_filtrados = [
-            pedido for pedido in pedidos if pedido["local"] == local
-        ]
+    for idx, local in enumerate(ruta[0], start=1):
+        if local == "Sucursal":
+            coord = sucursal_vicalvaro
+            popup_text = f"{idx}. Sucursal"
+            folium.Marker(location=coord, popup="Sucursal", icon=folium.Icon(color="black", icon="home")).add_to(mapa)
+        else:
+            try:
+                coord = next(pedido["coordenadas"] for pedido in pedidos if pedido["local"] == local)
+                popup_text = f"{idx}. {local}"
+                folium.Marker(location=coord, popup=popup_text).add_to(mapa)
+                coords_ruta.append(coord)  # Agregar coordenada a la ruta
+            except StopIteration:
+                print(f"Local {local} no encontrado en los pedidos.")
+                continue  # O maneja el error de otra manera
 
-        # Si no se encuentra un local en los pedidos, emitir advertencia
-        if not locales_filtrados:
-            print(f"Advertencia: No se encontró el local '{local}' en los pedidos.")
-            continue
-
-        # Procesar cada local encontrado y añadir al mapa
-        for pedido in locales_filtrados:
-            coord = pedido["coordenadas"]
-            coords_ruta.append(coord)
-
-            # Crear popup con índice y nombre del local
-            popup_text = f"{idx}. {local}"
-            folium.Marker(
-                location=coord,
-                popup=popup_text,
-                icon=folium.Icon(color="blue", icon="info-sign")
-            ).add_to(mapa)
-
-    # Añadir la sucursal al final de la ruta
-    coords_ruta.append(sucursal_vicalvaro)
-    folium.Marker(
-        location=sucursal_vicalvaro,
-        popup="Fin: Sucursal",
-        icon=folium.Icon(color="black", icon="home")
-    ).add_to(mapa)
-
-    # Dibujar la línea de la ruta
-    if len(coords_ruta) > 1:
-        folium.PolyLine(coords_ruta, color="blue", weight=2.5, opacity=1).add_to(mapa)
+    # Dibujar la ruta en el mapa como una línea
+    if len(coords_ruta) > 1:  # Asegurarse de que haya más de un punto
+        folium.PolyLine(coords_ruta, color="red", weight=3.5, opacity=1).add_to(mapa)
 
     # Guardar el mapa como un archivo HTML
     mapa.save(f"{nombre}.html")
@@ -447,6 +422,5 @@ def menu_principal():
 
 # Ejecutar menú principal
 menu_principal()
-
     
     

@@ -135,7 +135,7 @@ def cargar_pedidos():
 # Guardar pedidos en el archivo JSON
 def guardar_pedidos(pedidos):
     with open(archivo_pedidos, 'w') as f:
-        json.dump(pedidos, f)
+        json.dump(pedidos, f, indent=4)
 
 # Pedidos almacenados
 pedidos = cargar_pedidos()
@@ -374,7 +374,7 @@ def visualizar_ruta(ruta, nombre="ruta"):
         coords_ruta.append(coord)
 
     # Dibujar la ruta en el mapa como una línea
-    folium.PolyLine(coords_ruta, color="blue", weight=2.5, opacity=1).add_to(mapa)
+    folium.PolyLine(coords_ruta, color="red", weight=3.5, opacity=1).add_to(mapa)
 
     # Guardar el mapa como un archivo HTML
     mapa.save(f"{nombre}.html")

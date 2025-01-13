@@ -70,7 +70,7 @@ locales_por_postal = {
 def generar_locales(postal_coordinates, locales_por_postal):
     locales = {}
     for postal, coords in postal_coordinates.items():
-        for idx, local_name in enumerate(locales_por_postal[postal]):
+        for local_name in locales_por_postal[postal]:
             delta_lat = random.uniform(-0.005, 0.005)
             delta_lon = random.uniform(-0.005, 0.005)
             local_coords = (coords[0] + delta_lat, coords[1] + delta_lon)
@@ -78,17 +78,22 @@ def generar_locales(postal_coordinates, locales_por_postal):
     return locales
 
 # Construir grafo de locales
-def construir_grafo(locales):
+# Crear grafo asegurando conexiones entre todos los nodos
+def construir_grafo(pedidos):
     grafo = nx.Graph()
-    for local1, data1 in locales.items():
-        for local2, data2 in locales.items():
-            if local1 == local2:
-                continue
-            coords1, coords2 = data1["coords"], data2["coords"]
-            distancia = geodesic(coords1, coords2).kilometers
-            tiempo = distancia / 40 * 60  # Tiempo en minutos
-            grafo.add_edge(local1, local2, weight=distancia, tiempo=tiempo)
+    nodos = [(p["local"], p["coordenadas"]) for p in pedidos]
+    nodos.append(("Sucursal", sucursal_vicalvaro))
+
+    # Añadir conexiones
+    for i, (local1, coord1) in enumerate(nodos):
+        for j, (local2, coord2) in enumerate(nodos):
+            if i != j:
+                distancia = geodesic(coord1, coord2).kilometers
+                grafo.add_edge(local1, local2, weight=distancia)
     return grafo
+
+
+
 
 # Mostrar mapa del grafo con opción de filtro
 def mostrar_mapa(locales, grafo, zona=None):
@@ -98,7 +103,7 @@ def mostrar_mapa(locales, grafo, zona=None):
     else:
         locales_filtrados = locales
 
-    mapa = folium.Map(location=sucursal_vicalvaro, zoom_start=11) # Sucursal en Vicalvaro
+    mapa = folium.Map(location=sucursal_vicalvaro, zoom_start=11)  # Sucursal en Vicalvaro
     colores = ["red", "blue", "green", "purple", "orange", "darkred"]
 
     # Añadir nodos al mapa
@@ -109,7 +114,9 @@ def mostrar_mapa(locales, grafo, zona=None):
         folium.Marker(location=coords,
                       popup=f"{local} ({postal})",
                       icon=folium.Icon(color=color)).add_to(mapa)
-        folium.Marker(location=sucursal_vicalvaro, popup="Sucursal", icon=folium.Icon(color="black", icon="home")).add_to(mapa)
+
+    # Añadir la sucursal al mapa
+    folium.Marker(location=sucursal_vicalvaro, popup="Sucursal", icon=folium.Icon(color="black", icon="home")).add_to(mapa)
 
     # Añadir conexiones
     for nodo1, nodo2, data in grafo.edges(data=True):
@@ -135,7 +142,14 @@ def cargar_pedidos():
 # Guardar pedidos en el archivo JSON
 def guardar_pedidos(pedidos):
     with open(archivo_pedidos, 'w') as f:
-        json.dump(pedidos, f)
+        json.dump(pedidos, f, indent=4)
+
+#Visualiza los pedidos del JSON        
+def verificar_pedidos(archivo_pedidos):
+    """Lee y muestra el contenido del archivo pedidos.json para verificar."""
+    with open(archivo_pedidos, 'r') as f:
+        contenido = json.load(f)
+        print(json.dumps(contenido, indent=4))  # Mostrar datos en formato legible
 
 # Pedidos almacenados
 pedidos = cargar_pedidos()
@@ -286,9 +300,10 @@ def calcular_rutas():
     rutas = planificar_entregas(pedidos)
     if rutas:
         print(f"{Fore.GREEN}Rutas calculadas:")
-        for idx, (ruta, distancia) in enumerate(rutas, 1):
-            print(f"Ruta {idx}: {ruta} | Distancia total: {distancia:.2f} km")
+        for idx, (ruta, distancia, tiempo) in enumerate(rutas, 1):
+            print(f"Ruta {idx}: {ruta} | Distancia total: {distancia:.2f} km | Tiempo estimado: {tiempo:.2f} minutos")
             visualizar_ruta((ruta, distancia), f"ruta_{idx}")
+
     
     # Planificación y cálculo de rutas
 def planificar_entregas(pedidos, capacidad_camion=10):
@@ -298,8 +313,8 @@ def planificar_entregas(pedidos, capacidad_camion=10):
         rutas.append(calcular_ruta(ruta_actual))
     return rutas
 
-# Calcular la ruta óptima para un conjunto de entregas
-def calcular_ruta(pedidos_ruta):
+# Calcular la ruta óptima para un conjunto de entregas y el tiempo total
+def calcular_ruta(pedidos_ruta, velocidad_urbana=40, velocidad_interurbana=90):
     graph = nx.Graph()
 
     # Crear lista de nodos, incluyendo la sucursal
@@ -320,10 +335,24 @@ def calcular_ruta(pedidos_ruta):
     if ruta_optima[-1] != "Sucursal":
         ruta_optima.append("Sucursal")
 
-    # Calcular distancia total
+    # Calcular distancia y tiempo totales
     distancia_total = sum(graph[u][v]['weight'] for u, v in zip(ruta_optima[:-1], ruta_optima[1:]))
+    tiempo_total = calcular_tiempo_total(graph, ruta_optima, velocidad_urbana, velocidad_interurbana)
 
-    return ruta_optima, distancia_total
+    return ruta_optima, distancia_total, tiempo_total
+
+
+# Calcular tiempo total basado en las velocidades promedio
+def calcular_tiempo_total(graph, ruta, velocidad_urbana, velocidad_interurbana):
+    tiempo_total = 0.0
+
+    for u, v in zip(ruta[:-1], ruta[1:]):
+        distancia = graph[u][v]['weight']
+        velocidad = velocidad_interurbana if distancia > 5 else velocidad_urbana  # Umbral de 5 km para diferenciar urbano/interurbano
+        tiempo_total += distancia / velocidad * 60  # Tiempo en minutos
+
+    return tiempo_total
+
 
 
 # Heurística TSP Nearest Neighbor
@@ -341,27 +370,33 @@ def tsp_nearest_neighbor(graph, start_node):
     return visited
 
 # Visualizar ruta en mapa
+# Mejorar la función de visualización de rutas
 def visualizar_ruta(ruta, nombre="ruta"):
-    # Crear el mapa centrado en la sucursal
     mapa = folium.Map(location=sucursal_vicalvaro, zoom_start=12)
 
-    # Crear una lista de coordenadas para la ruta
-    coords_ruta = []
-    for local in ruta[0]:
+    # Coordenadas para la ruta
+    coords_ruta = [sucursal_vicalvaro]  # La sucursal siempre está al inicio y al final
+    for local in ruta[0]:  # ruta[0] contiene la lista de locales
         if local == "Sucursal":
             coord = sucursal_vicalvaro
             folium.Marker(location=coord, popup="Sucursal", icon=folium.Icon(color="black", icon="home")).add_to(mapa)
         else:
-            coord = next(pedido["coordenadas"] for pedido in pedidos if pedido["local"] == local)
-            folium.Marker(location=coord, popup=local).add_to(mapa)
-        coords_ruta.append(coord)
+            # Encontrar coordenadas del local en los pedidos
+            local_coords = next((p["coordenadas"] for p in pedidos if p["local"] == local), None)
+            if local_coords:
+                folium.Marker(location=local_coords, popup=local, icon=folium.Icon(color="blue")).add_to(mapa)
+                coords_ruta.append(local_coords)
+            else:
+                print(f"{Fore.RED}Coordenadas no encontradas para {local}. No se incluirá en el mapa.")
 
-    # Dibujar la ruta en el mapa como una línea
-    folium.PolyLine(coords_ruta, color="blue", weight=2.5, opacity=1).add_to(mapa)
+    # Dibujar la ruta si hay al menos 2 puntos
+    if len(coords_ruta) > 1:
+        folium.PolyLine(coords_ruta, color="red", weight=2.5).add_to(mapa)
 
-    # Guardar el mapa como un archivo HTML
+    # Guardar el mapa
     mapa.save(f"{nombre}.html")
-    print(f"Ruta guardada como {nombre}.html")
+    print(f"{Fore.GREEN}Mapa de la ruta guardado en {nombre}.html")
+
 
 
 # Eliminar pedidos entregados
@@ -396,3 +431,4 @@ def menu_principal():
 
 # Ejecutar menú principal
 menu_principal()
+
